@@ -1,0 +1,17 @@
+[user]
+  name=Pete Blois
+[color]
+  diff = auto
+  status = auto
+[core]
+  pager = less -FXR -x4
+  deltaBaseCacheLimit = 1G
+[mergetool]
+  keepBackup = false
+[alias]
+  slog = log --abbrev-commit --pretty=oneline --decorate -10
+  dated = for-each-ref --sort=committerdate refs/heads/ --format='%(HEAD) %(color:yellow)%(refname:short)%(color:reset) - %(color:red)%(objectname:short)%(color:reset) - %(contents:subject) - (%(color:green)%(committerdate:relative)%(color:reset))'
+[diff]
+  tool = meld
+[merge]
+  tool = meld

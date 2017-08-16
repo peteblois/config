@@ -1,0 +1,114 @@
+#!/usr/bin/env python
+
+import os
+import re
+import subprocess
+import sys
+
+# Python script to automatically squash git branches
+
+root_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+def main():
+  if HasUncommittedChanges():
+    return
+
+  offset = 0
+  messages = []
+  last_local_commit = ''
+  while True:
+    proc = subprocess.Popen([
+        'git',
+        'log',
+        '--pretty=oneline',
+        '-n1',
+        '--skip=%d' % offset
+        ], stdout=subprocess.PIPE)
+
+    offset += 1
+    line = proc.stdout.readline()
+    if not line:
+      raise Exception('could not find any commits in origin.')
+
+    commit = re.match('([a-f0-9]*)\w*.*', line).group(1)
+    if 'synced with perforce at' in line:
+      Squash(commit, messages)
+      return
+    messages.append(GetMessage(commit))
+
+def HasUncommittedChanges():
+  """ Checks to see if there are any uncommitted changes.
+
+  Returns:
+      True if there are uncommitted changes.
+  """
+  try:
+    subprocess.check_call(['git', 'diff-files', '--quiet'])
+  except:
+    print('Cannot squash- there are unstaged changes.')
+    return True
+  try:
+    subprocess.check_call(['git', 'diff-index', '--cached', '--quiet', 'HEAD'])
+  except:
+    print('Cannot squash- your index contains uncommitted changes.')
+    return True
+  return False
+
+def GetMessage(commit):
+  """ Gets the commit message for a specified git commit.
+
+  Args:
+      commit: Git commit ID.
+  """
+  proc = subprocess.Popen(['git', 'log', '--format=%B', '-n1', commit],
+      stdout=subprocess.PIPE)
+  return proc.stdout.read()
+
+def Confirm(last_local_commit):
+  proc = subprocess.Popen(['git', 'log', '--pretty=oneline', '--abbrev-commit',
+      '-n1', last_local_commit], stdout=subprocess.PIPE)
+  msgs = proc.stdout.read()
+  print('Squashing commits back to: %s' % (msgs))
+  while True:
+    sys.stdout.write('Continue? [Y/n]:')
+    choice = raw_input().lower()
+    if choice == '' or choice == 'y':
+      return True
+    if choice == 'n':
+      return False
+
+def Squash(last_local_commit, messages):
+  """ Squash the specified number of commits.
+
+  This will combine all of the commit messages and use them as the single
+  commit message.
+
+  Args:
+      last_local_commit: The last local commit
+      messages: Commit messages for the commits to be squashed.
+  """
+
+  if not Confirm(last_local_commit):
+    return
+
+  message = ''
+  for index, msg in enumerate(messages):
+    message += '# Commit %d\n' % (len(messages) - index)
+
+    if index < len(messages) - 1:
+      message += re.sub('^[ ]*Change-Id: [a-zA-Z0-9]+\n', '', msg,
+          flags=re.MULTILINE)
+    else:
+      message += msg
+
+  print('Squashing %s' % last_local_commit)
+
+  subprocess.check_call(['git', 'reset', '--soft', last_local_commit])
+  try:
+    subprocess.check_call(['git', 'commit', '--edit', '-m', message])
+  except:
+    print('Commit aborted')
+    subprocess.check_call(['git', 'reset', 'HEAD@{1}'])
+
+if __name__ == '__main__':
+  main()
